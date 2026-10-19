@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased (rc.1 stabilisation) — 2026-10-20
+## 1.0.0-rc.2 — 2026-10-20
+
+### Fixed
+- Search treats `%` and `_` literally instead of as wildcards.
+- Sprint updates reject `start_date` after `end_date` and null dates (previously a server error).
+- Database errors are returned as generic messages; constraint and table names are no longer exposed. NOT NULL, date and range errors return 400 instead of 500.
+- Session cookie lifetime follows `SESSION_DAYS` (was fixed at 7 days); session `last_seen_at` is now updated (at most every 5 minutes).
+- Compose web service now receives `SESSION_DAYS` and `TRUST_PROXY` (its own environment block overrode the shared one).
+
+### Added
+- `PROXY_NETWORK` to select the existing Nginx Proxy Manager network.
+- `pull_policy: build` so Dockge "Update" rebuilds from source instead of pulling.
+- `ops/DEPLOY_DOCKGE_NPM.md` deployment guide for Ubuntu + Dockge + Nginx Proxy Manager.
+- `ops/verify-staging.mjs` checks HTTPS origin, HSTS, frame/nosniff headers and HTTP→HTTPS redirect.
+
+### Verified locally
+- Full Compose stack (read-only containers, migrate → web/worker ordering, worker reminder delivery, uploads volume) on an isolated project.
+- Encrypted backup → restore drill (pg_dump + uploads, age round trip, checksums, row counts, attachment hash).
+
+### First stabilisation pass (also in 1.0.0-rc.2)
 
 ### Fixed
 - 14 TypeScript errors: typed/validated route parameters, typed reader loop for provider SSE streams, exported `base32Encode` (MFA enrolment import previously broke module linking), safe JWK → RSA key construction for Google/Microsoft ID tokens, removed dynamic `db.js` imports in auth.

@@ -4,7 +4,9 @@ x-common: &common
   build:
     context: .
     dockerfile: Dockerfile
-  image: personal-tracker:${IMAGE_TAG:-1.0.0-rc.1}
+  image: personal-tracker:${IMAGE_TAG:-1.0.0-rc.2}
+  # Images are built from this checkout; Dockge "Update" rebuilds instead of pulling from a registry.
+  pull_policy: build
   restart: unless-stopped
   user: node
   read_only: true
@@ -62,6 +64,8 @@ services:
       MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      SESSION_DAYS: ${SESSION_DAYS:-7}
+      TRUST_PROXY: ${TRUST_PROXY:-}
       TZ: ${TZ:-Europe/Riga}
       ATTACHMENTS_DIR: /app/uploads
     volumes:
@@ -85,7 +89,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.migrate
-    image: personal-tracker-migrate:${IMAGE_TAG:-1.0.0-rc.1}
+    image: personal-tracker-migrate:${IMAGE_TAG:-1.0.0-rc.2}
+    pull_policy: build
     restart: "no"
     environment:
       DATABASE_URL: postgres://tracker:${DB_PASSWORD:?Set DB_PASSWORD}@personal-tracker-db:5432/tracker
@@ -114,6 +119,8 @@ volumes:
   personal_tracker_uploads:
 networks:
   proxy:
+    # Existing Nginx Proxy Manager network; set PROXY_NETWORK if yours is not called "proxy".
+    name: ${PROXY_NETWORK:-proxy}
     external: true
   private:
     internal: true

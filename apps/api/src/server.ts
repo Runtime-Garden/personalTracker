@@ -30,7 +30,8 @@ const b=(req:FastifyRequest)=>req.body as Record<string,any>||{};
 // Route parameters are validated at runtime; a missing segment is a client error, never `undefined` in SQL.
 const param=(req:FastifyRequest,key:string):string=>{const v=(req.params as Record<string,unknown>|undefined)?.[key];assert(typeof v==='string'&&v.length>0,`Missing route parameter ${key}`);return v;};
 const secure=()=>process.env.COOKIE_SECURE!=='false';
-const cookie=(raw:string)=>`pt_session=${raw}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800${secure()?'; Secure':''}`;
+const sessionSeconds=()=>Math.max(1,Math.min(30,Number(process.env.SESSION_DAYS||7)))*86400;
+const cookie=(raw:string)=>`pt_session=${raw}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${sessionSeconds()}${secure()?'; Secure':''}`;
 const clearCookie=()=>`pt_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure()?'; Secure':''}`;
 const ctEqual=(a:string,c:string)=>a.length===c.length&&timingSafeEqual(Buffer.from(a),Buffer.from(c));
 const requireUser=(req:FastifyRequest)=>{assert(req.actor,'Authentication required',401);return req.actor;};
@@ -72,9 +73,12 @@ app.addHook('preHandler',async req=>{
 });
 app.setErrorHandler((error,req,reply)=>{
   const e=error as Error & {statusCode?:number;code?:string};
-  const code=e instanceof HttpError?e.statusCode:e.code==='23505'?409:e.code==='23503'||e.code==='23514'||e.code==='22P02'?400:(e.statusCode&&e.statusCode>=400&&e.statusCode<500?e.statusCode:500);
+  // PostgreSQL errors are mapped to generic client messages so constraint/table names never leak.
+  const pg:Record<string,[number,string]>={'23505':[409,'Record already exists'],'23503':[400,'Referenced record does not exist'],'23514':[400,'Value violates a data rule'],'23502':[400,'Required value missing'],'22P02':[400,'Invalid identifier or value'],'22007':[400,'Invalid date or time'],'22008':[400,'Date or time out of range'],'22003':[400,'Number out of range'],'22001':[400,'Value too long']};
+  const mapped=!(e instanceof HttpError)&&e.code?pg[e.code]:undefined;
+  const code=e instanceof HttpError?e.statusCode:mapped?mapped[0]:(e.statusCode&&e.statusCode>=400&&e.statusCode<500?e.statusCode:500);
   if(code>=500)req.log.error({err:e},'API failure');
-  reply.code(code).send({error:code>=500?'Internal server error':e.message});
+  reply.code(code).send({error:code>=500?'Internal server error':mapped?mapped[1]:e.message});
 });
 app.get('/healthz',async()=>({status:'ok'}));
 app.get('/readyz',async()=>{await pool.query('SELECT 1');return {status:'ready'};});

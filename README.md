@@ -1,36 +1,33 @@
-> **v1.0.0-rc.1 (2026-10-19): source release candidate, not production approved.**
-> New: passkeys, explicit OAuth account linking, read-only AI streaming, encrypted backup templates, corrected worker outbound networking. See `PHASE_COVERAGE.md`, `RELEASE_STATUS.md`, `TEST_REPORT.md` and `ops/V1_RELEASE_GATES.md`.
-
 # Personal Tracker · by Runtime Garden
 
-**v0.3.0 — B–E development snapshot (not a production release)**
+**v1.0.0-rc.2 — release candidate.** Self-hosted personal and team productivity tracker: React/Vite web app, Fastify/TypeScript API, PostgreSQL 17, Docker Compose.
 
-A personal + team productivity tracker developed as a modular TypeScript application. The existing v0.1.0 Engineering Preview is preserved in `legacy-reference/` for comparison. This package is a **new implementation** using React/Vite, Fastify/TypeScript and PostgreSQL with versioned SQL migrations and a Drizzle schema. It does not overwrite any currently deployed Runtime Garden project.
+> Release status: build, real-PostgreSQL API integration tests, browser smoke tests, a full Compose stack rehearsal and a backup/restore drill pass locally.
+> Live OAuth providers, passkeys on real devices, live AI providers, email delivery and the production TLS/proxy path must be verified on the target server before tagging `1.0.0` (see `ops/V1_RELEASE_GATES.md`).
 
-> **Release status:** Phase A source plus selected B–E modules implemented, static/domain tests passed; dependency installation, real API/database execution, browser E2E, Docker builds, live OAuth/AI providers, and production deployment **were not performed** in this offline authoring environment. See `RELEASE_STATUS.md` and `PHASE_COVERAGE.md`. Do not expose publicly until `ops/PHASE_A_VERIFICATION.md` passes.
+## Features
 
-## Included capabilities (development, not fully verified)
-
-- Setup-only bootstrap admin, password/session auth, optional Google and GitHub sign-in, invitation-based registration, email verification, password reset, TOTP MFA, recovery codes and session revocation
-- Personal workspace per account, team workspace membership, invite/accept, role check on scoped operations
-- Tasks, priorities, project assignment, optimistic version checking, task comments, archiving, labels, subtasks, dependency cycles, recurrence and watchers
-- Projects, todos and private/shared todo lists, reminders, notifications, My Day, sprint assignment, Kanban and focus sessions
-- AI connections, usage records, read-only Q&A and explicit approval of bounded AI-proposed mutations (not a full tool-calling agent platform)
-- Integrated system administration (signup policy, user activation, audit event list, health, worker status and AI usage endpoints)
-- Responsive React UI with Runtime Garden v2 assets and a PostgreSQL reminder worker
-- Versioned, checksummed Postgres migrations and a non-destructive, operator-controlled SQLite importer
+- One-time setup token for the first administrator; email/password login, invitation-only or open signup, email verification, password reset
+- TOTP two-factor authentication with single-use recovery codes, passkeys (WebAuthn), device session list and revocation
+- Optional Google, GitHub and tenant-restricted Microsoft Entra sign-in, explicit account linking (never merged by email)
+- Personal workspace per account and team workspaces with owner/admin/member/viewer roles enforced in the API and SQL
+- Tasks with priorities, projects, labels, subtasks, dependencies, recurrence, comments, watchers, mentions, private file attachments and optimistic concurrency
+- Todos with private or shared lists, reminders with timezone-aware recurrence, notifications with optional email delivery and quiet hours
+- My Day, Kanban board, sprints with analytics, focus (Pomodoro) timer, personal JSON export
+- Bring-your-own-key AI assistant: read-only questions, streaming, read-only tool calling, and AI-proposed changes that run only after explicit human approval and are audited
+- System administration: signup policy, users, AI provider policy, pricing and limits, audit log, worker/job health, email queue, alerts
+- Responsive Runtime Garden v2 interface
 
 ## Repository structure
 
 ```text
-apps/api/src/      Fastify API, auth, workflow, AI, worker, Drizzle schema
+apps/api/src/      Fastify API, auth, domain modules, AI, reminder/email worker
 apps/web/src/      React + TypeScript UI
 apps/web/public/   Runtime Garden v2 brand assets
-db/migrations/     Ordered PostgreSQL migration SQL
-ops/               Migration CLI, importer, backup and deployment instructions
-tests/             Source/contract/domain tests
-legacy-reference/  Original v0.1.0 code and its original integration test
-.docs/             Original OpenCode blueprint and brand documentation
+db/migrations/     Ordered, forward-only PostgreSQL migrations
+ops/               Migration CLI, importer, backup, staging verification and deployment guides
+legacy-reference/  Original v0.1.0 code kept for comparison
+.docs/             Product blueprint and brand documentation
 ```
 
 ## Local development
@@ -54,31 +51,20 @@ npm run dev:worker  # terminal 3, reminder delivery
 
 Initial setup: open the app, enter the one-time `SETUP_TOKEN`, admin name, email and password of 12+ characters. Store secrets outside source control. The setup endpoint is blocked after the first user exists.
 
-### Tests
+## Checks
 
 ```bash
-npm run typecheck && npm test && npm run build
-npm run test:integration   # starts a throwaway PostgreSQL 17 container (tmpfs), migrates, runs API tests, removes it
+npm run typecheck
+npm run build
 ```
 
-The integration suite refuses to run against a database that already contains users. It never touches the dev database volume.
+## Deployment
 
-## Production-oriented Compose structure
+Step-by-step guide for Ubuntu + Dockge (`/opt/stacks`) + Nginx Proxy Manager: **`ops/DEPLOY_DOCKGE_NPM.md`**.
 
-Stack path: `/opt/stacks/personal-tracker`. NPM upstream on existing Docker network: `http://personal-tracker-web:3000`. Only the web service is attached to the external `proxy` network. PostgreSQL remains in an isolated internal network with a persistent volume. A separate migration service runs before the API/worker. **This is prepared, not VPS-verified.**
+Summary: only the web container joins the existing Nginx Proxy Manager network (`PROXY_NETWORK`, default `proxy`) and NPM forwards to `http://personal-tracker-web:3000`. PostgreSQL stays on an internal network with no published ports; a one-shot migration service runs before the web and worker containers. Containers run as a non-root user with a read-only root filesystem. Never run `docker compose down -v` on a deployed stack.
 
-```bash
-cp .env.example .env
-# Edit APP_URL to your real HTTPS hostname and fill DB_PASSWORD, SETUP_TOKEN, APP_ENCRYPTION_KEY.
-# Verify that 'proxy' exists: docker network inspect proxy
-# Never publish DB ports or check your .env into Git.
-docker compose config --quiet
-docker compose build
-docker compose up -d
-# Check readiness via a browser or NPM: https://YOUR_HOST/readyz
-```
-
-For a first-time deployment, deploy to an **unshared staging hostname**, run the full verification checklist, confirm the reverse proxy and Cloudflare origin protections, and only then consider public availability. Do not run a destructive `down -v` on existing volumes.
+Backups: `ops/BACKUP_AND_RESTORE.md` (encrypted PostgreSQL + uploads archive with age and rclone).
 
 ## Existing v0.1 data migration
 
@@ -93,28 +79,10 @@ npm run db:import-sqlite -- --source /safe/path/tracker.sqlite --apply
 
 Read `ops/PHASE_A_VERIFICATION.md` for counts, constraints and rollback procedure. Import is atomic (all-or-nothing transaction). Never test an importer first on production data.
 
-## Testing
+## Known limitations
 
-```bash
-npm test                 # source/static/domain checks (includes dependency-free tests)
-npm run typecheck        # requires successful dependency installation
-npm run build            # API and React assets
-node --experimental-sqlite --test legacy-reference/tests/integration.test.js
-```
+- Drizzle ORM is used for part of the data access; complex transactions use parameterised `pg` queries by design.
+- Native streaming is implemented for the OpenAI-compatible providers only; Anthropic and Google use non-streaming requests. Azure OpenAI, Bedrock and Vertex adapters are not included.
+- No offline/PWA mode, browser push notifications or realtime co-editing.
 
-**Tests requiring a running PostgreSQL service and browser are acceptance gates, not claimed results.** Re-run API auth, roles, project/task/todo CRUD, sprint membership, reminder worker, AI approve/reject and migration validation against an isolated PostgreSQL DB.
-
-## Current architectural exceptions / future phases
-
-- Runtime uses parameterized `pg` queries for several transactions, alongside a typed Drizzle schema and Drizzle-based read path. Completing a consistent Drizzle repository layer is recommended before declaring architecture migration fully complete.
-- Sessions still use custom scrypt/cookie primitives; Better Auth migration is not yet implemented. Password reset, GitHub OAuth and TOTP were added as source only, while Microsoft OIDC and passkeys remain missing.
-- True native tool calling, streaming, broad provider registry, attachment uploads, enterprise collaboration, complete admin operations and comprehensive live integration tests remain unfinished.
-- No complete npm lockfile could be generated due to lack of network access. Dependencies are exact-pinned, but their transitive resolution is not frozen. **Generate and commit `package-lock.json` in an online, trusted environment using `npm install`, then switch Docker builds to `npm ci` for reproducibility.**
-
-Security: never upload private `.env`, legacy database, OAuth tokens or AI keys to public repositories. Avoid treating a green container health check as proof of application correctness.
-
-## v0.4.0 development snapshot updates
-
-New: Microsoft tenant-specific OAuth, per-task private file attachments, read-only AI tools, AI provider admin policies and preview, email delivery outbox, sprint snapshots, timezone-aware recurring reminders, personal JSON export and operator backup runbook. See `PHASE_COVERAGE.md`.
-
-**This is not a verified release.** Obtain a lockfile and run all semantic type checks, real PostgreSQL/API integration tests and staging migration rehearsal before using. `ops/RELEASE_GATE.md` is the source of truth. The web container additionally needs the `personal_tracker_uploads` persistent volume.
+Security: never commit `.env`, `.backup.env`, database dumps, OAuth secrets or AI keys.

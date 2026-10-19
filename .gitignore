@@ -16,6 +16,7 @@ var/
 tests/
 legacy-reference/tests/
 ops/test-integration.sh
+ops/test-browser.sh
 *.test.js
 *.test.mjs
 *.test.ts
@@ -38,6 +39,7 @@ PACKAGE-MANIFEST.md
 .docs/PACKAGE-MANIFEST.md
 SOURCE-MANIFEST.json
 .docs/SOURCES_AND_VERIFICATION.md
+.docs/KULLANIM_KILAVUZU_TR.md
 
 # AI assistant / agent files
 .claude/
@@ -48,3 +50,8 @@ AGENTS.md
 **/AGENTS.md
 .opencode/
 .mcp.json
+
+# Operator secrets and backup output on the server
+.backup.env
+secure-backups/
+backup/
