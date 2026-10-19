@@ -1,0 +1,18 @@
+# Local development only. Never run this exposed database profile on the VPS.
+services:
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: tracker
+      POSTGRES_USER: tracker
+      POSTGRES_PASSWORD: local_dev_only_change_me
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - personal_tracker_dev_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracker -d tracker"]
+      interval: 5s
+      retries: 15
+volumes:
+  personal_tracker_dev_pg:

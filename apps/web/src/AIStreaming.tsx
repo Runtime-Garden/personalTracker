@@ -1,0 +1,13 @@
+import React,{useRef,useState} from 'react';
+export function AIStreaming({base,connections,csrf}:{base:string;connections:Array<{id:string;provider:string;model:string}>;csrf:string}){
+ const [text,setText]=useState(''),[question,setQuestion]=useState(''),[connection,setConnection]=useState(''),[running,setRunning]=useState(false),[error,setError]=useState('');
+ const controller=useRef<AbortController|null>(null);
+ async function submit(e:React.FormEvent){e.preventDefault();controller.current?.abort();const signal=new AbortController();controller.current=signal;setRunning(true);setText('');setError('');
+  try{const response=await fetch(`${base}/ai/stream`,{method:'POST',headers:{'content-type':'application/json','x-csrf-token':csrf},credentials:'same-origin',body:JSON.stringify({connection_id:connection||connections[0]?.id,message:question}),signal:signal.signal});
+   if(!response.ok||!response.body){const data=await response.json().catch(()=>({error:response.statusText}));throw Error(data.error||'Streaming failed');}
+   const reader=response.body.getReader(),decoder=new TextDecoder();let buffer='';
+   while(true){const {done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const frames=buffer.split('\n\n');buffer=frames.pop()||'';for(const frame of frames){const type=frame.split('\n').find(line=>line.startsWith('event:'))?.slice(6).trim();const data=frame.split('\n').find(line=>line.startsWith('data:'))?.slice(5).trim();if(!data)continue;const parsed=JSON.parse(data);if(type==='delta')setText(prev=>prev+parsed.text);if(type==='error')throw Error(parsed.error||'Provider error');}}
+  }catch(e){if(!signal.signal.aborted)setError(e instanceof Error?e.message:String(e));}finally{setRunning(false)}
+ }
+ return <section className="panel"><h2>Streaming AI response</h2><p>Read-only; requires an OpenAI-compatible connection. No actions are executed.</p><form className="form-stack" onSubmit={e=>void submit(e)}><label>Connection<select value={connection} onChange={e=>setConnection(e.target.value)}>{connections.map(c=><option key={c.id} value={c.id}>{c.provider} · {c.model}</option>)}</select></label><label>Question<textarea value={question} onChange={e=>setQuestion(e.target.value)} rows={3} maxLength={3000} required/></label><button className="btn primary" disabled={!connections.length||running||!question.trim()}>Stream response</button>{running&&<button type="button" className="btn subtle" onClick={()=>controller.current?.abort()}>Cancel stream</button>}</form>{error&&<p role="alert">{error}</p>}<div role="status" aria-live="polite" className="ai-stream-output" style={{whiteSpace:'pre-wrap'}}>{text}</div></section>
+}

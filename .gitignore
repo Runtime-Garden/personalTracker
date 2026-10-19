@@ -1,0 +1,50 @@
+node_modules/
+dist/
+.env
+.env.*.local
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.log
+*.tgz
+coverage/
+var/
+.env.*
+!.env.example
+
+# Tests and test tooling
+tests/
+legacy-reference/tests/
+ops/test-integration.sh
+*.test.js
+*.test.mjs
+*.test.ts
+playwright-report/
+test-results/
+.docs/docs/quality/02-TEST-PLAN.md
+
+# Prompts
+.docs/prompts/
+*PROMPT*.md
+*Prompt*.md
+*prompt*.md
+
+# Reports and status/handover notes
+TEST_REPORT.md
+RELEASE_STATUS.md
+PHASE_COVERAGE.md
+TESLIM_NOTLARI_TR.md
+PACKAGE-MANIFEST.md
+.docs/PACKAGE-MANIFEST.md
+SOURCE-MANIFEST.json
+.docs/SOURCES_AND_VERIFICATION.md
+
+# AI assistant / agent files
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+**/CLAUDE.md
+AGENTS.md
+**/AGENTS.md
+.opencode/
+.mcp.json

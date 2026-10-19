@@ -1,0 +1,15 @@
+[Unit]
+Description=Personal Tracker encrypted offsite backup
+Wants=network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/stacks/personal-tracker
+EnvironmentFile=/opt/stacks/personal-tracker/.backup.env
+ExecStart=/bin/sh /opt/stacks/personal-tracker/ops/backup-encrypted.sh
+User=root
+Group=root
+PrivateTmp=true
+NoNewPrivileges=true
+TimeoutStartSec=1h

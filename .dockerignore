@@ -1,0 +1,12 @@
+node_modules
+.git
+.env
+.env.*
+!/.env.example
+legacy-reference
+screenshots
+*.sqlite
+*.zip
+coverage
+dist
+var

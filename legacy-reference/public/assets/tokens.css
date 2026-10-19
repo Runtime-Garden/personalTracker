@@ -1,0 +1,34 @@
+/* Runtime Garden — initial design tokens, v1.0. Source of truth: Design Brief. */
+:root {
+  color-scheme: light;
+  --rg-bg: #F6F8F3;
+  --rg-surface: #FFFFFF;
+  --rg-surface-muted: #EDF2E9;
+  --rg-ink: #16271E;
+  --rg-muted: #506459;
+  --rg-accent: #286A47;
+  --rg-accent-soft: #DCEDE0;
+  --rg-border: #D8E1D6;
+  --rg-warm: #AD7742;
+  --rg-danger: #A43B3B;
+  --rg-radius-card: 16px;
+  --rg-radius-button: 10px;
+  --rg-container: 1200px;
+  --rg-article: 72ch;
+  --rg-font-sans: 'Inter', 'Geist', system-ui, -apple-system, sans-serif;
+  --rg-font-serif: 'Newsreader', Georgia, serif;
+  --rg-font-mono: 'IBM Plex Mono', 'JetBrains Mono', ui-monospace, monospace;
+}
+[data-theme='dark'] {
+  color-scheme: dark;
+  --rg-bg: #0D1713;
+  --rg-surface: #15231B;
+  --rg-surface-muted: #1B2C22;
+  --rg-ink: #EDF4ED;
+  --rg-muted: #AFBEB1;
+  --rg-accent: #8DD5A3;
+  --rg-accent-soft: #243E2C;
+  --rg-border: #304337;
+  --rg-warm: #D6AD77;
+  --rg-danger: #F3A3A3;
+}

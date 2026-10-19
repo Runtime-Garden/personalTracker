@@ -1,0 +1,9 @@
+# Optional local development: no external Runtime Garden proxy required.
+# `docker compose -f compose.yaml -f compose.local.yaml ...` overrides the network.
+services:
+  personal-tracker-web:
+    ports:
+      - "127.0.0.1:3000:3000"
+networks:
+  proxy:
+    external: false

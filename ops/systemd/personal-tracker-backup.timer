@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily encrypted backup for Personal Tracker
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+Unit=personal-tracker-backup.service
+
+[Install]
+WantedBy=timers.target

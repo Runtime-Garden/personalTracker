@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext", "lib": ["ES2022", "DOM"],
+    "rootDir": "apps/api/src", "outDir": "dist/api", "strict": true, "esModuleInterop": true,
+    "skipLibCheck": true, "forceConsistentCasingInFileNames": true, "resolveJsonModule": true,
+    "noUncheckedIndexedAccess": true, "types": ["node"]
+  }, "include": ["apps/api/src/**/*.ts"]
+}

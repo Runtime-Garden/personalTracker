@@ -1,0 +1,6 @@
+import {createHmac,timingSafeEqual} from 'node:crypto';
+const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+export function base32Encode(b:Buffer){let bits=0,buffer=0,result='';for(const byte of b){buffer=(buffer<<8)|byte;bits+=8;while(bits>=5){result+=alphabet[(buffer>>>(bits-=5))&31];}}if(bits>0)result+=alphabet[(buffer<<(5-bits))&31];return result;}
+function base32Decode(s:string){let bits=0,buffer=0,out:number[]=[];for(const ch of s.replace(/=+$/,'').toUpperCase()){const i=alphabet.indexOf(ch);if(i<0)throw new Error('Invalid one-time password secret');buffer=(buffer<<5)|i;bits+=5;if(bits>=8)out.push((buffer>>>(bits-=8))&255);}return Buffer.from(out);}
+export function totp(secret:string,step=Math.floor(Date.now()/30000)) {const msg=Buffer.alloc(8);msg.writeBigUInt64BE(BigInt(step));const mac=createHmac('sha1',base32Decode(secret)).update(msg).digest();const offset=mac[mac.length-1]!&15;const n=((mac.readUInt32BE(offset)&0x7fffffff)%1_000_000);return String(n).padStart(6,'0');}
+export function verifyTotp(secret:string,code:string,clock=Date.now()){if(!/^\d{6}$/.test(code))return false;const x=Math.floor(clock/30000);for(const drift of [-1,0,1]){const expected=totp(secret,x+drift);if(timingSafeEqual(Buffer.from(expected),Buffer.from(code)))return true;}return false;}
