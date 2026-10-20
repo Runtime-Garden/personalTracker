@@ -1,6 +1,6 @@
 # Personal Tracker · by Runtime Garden
 
-**v1.0.0-rc.2 — release candidate.** Self-hosted personal and team productivity tracker: React/Vite web app, Fastify/TypeScript API, PostgreSQL 17, Docker Compose.
+**v1.0.0-rc.3 — release candidate.** Self-hosted personal and team productivity tracker: React/Vite web app, Fastify/TypeScript API, PostgreSQL 17, Docker Compose.
 
 > Release status: build, real-PostgreSQL API integration tests, browser smoke tests, a full Compose stack rehearsal and a backup/restore drill pass locally.
 > Live OAuth providers, passkeys on real devices, live AI providers, email delivery and the production TLS/proxy path must be verified on the target server before tagging `1.0.0` (see `ops/V1_RELEASE_GATES.md`).
@@ -14,7 +14,8 @@
 - Tasks with priorities, projects, labels, subtasks, dependencies, recurrence, comments, watchers, mentions, private file attachments and optimistic concurrency
 - Todos with private or shared lists, reminders with timezone-aware recurrence, notifications with optional email delivery and quiet hours
 - My Day, Kanban board, sprints with analytics, focus (Pomodoro) timer, personal JSON export
-- Bring-your-own-key AI assistant: read-only questions, streaming, read-only tool calling, and AI-proposed changes that run only after explicit human approval and are audited
+- Bring-your-own-key AI assistant for OpenAI, Anthropic, Google, OpenRouter, DeepSeek, Groq, Mistral, xAI, Together and any **OpenAI-compatible or Anthropic-compatible endpoint** (OpenRouter, vLLM, LiteLLM, gateways): read-only questions, streaming, read-only tool calling, and AI-proposed changes that run only after explicit human approval and are audited
+- Optional **decision model** per user that sets priority and importance of new tasks left on *Automatic*, with a safe default when the model is slow or unavailable
 - System administration: signup policy, users, AI provider policy, pricing and limits, audit log, worker/job health, email queue, alerts
 - Responsive Runtime Garden v2 interface
 
@@ -82,7 +83,8 @@ Read `ops/PHASE_A_VERIFICATION.md` for counts, constraints and rollback procedur
 ## Known limitations
 
 - Drizzle ORM is used for part of the data access; complex transactions use parameterised `pg` queries by design.
-- Native streaming is implemented for the OpenAI-compatible providers only; Anthropic and Google use non-streaming requests. Azure OpenAI, Bedrock and Vertex adapters are not included.
+- Streaming and tool calling: streaming works for OpenAI- and Anthropic-format connections; tool calling for OpenAI-format connections only. Google uses non-streaming requests. Azure OpenAI, Bedrock and Vertex adapters are not included (an OpenAI-/Anthropic-compatible gateway can front them).
+- Custom AI endpoints must be public HTTPS; private network hosts need `AI_ALLOWED_PRIVATE_HOSTS`.
 - No offline/PWA mode, browser push notifications or realtime co-editing.
 
 Security: never commit `.env`, `.backup.env`, database dumps, OAuth secrets or AI keys.

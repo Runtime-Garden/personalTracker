@@ -46,7 +46,7 @@ docker inspect "$NPM" -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{$
 sudo git clone git@github.com:Runtime-Garden/personalTracker.git /opt/stacks/personal-tracker
 # or: sudo git clone https://github.com/Runtime-Garden/personalTracker.git /opt/stacks/personal-tracker
 cd /opt/stacks/personal-tracker
-sudo git checkout v1.0.0-rc.2     # deploy a tag, not a moving branch
+sudo git checkout v1.0.0-rc.3     # deploy a tag, not a moving branch
 ```
 
 Dockge detects `compose.yaml` in this directory as the stack **personal-tracker**.
@@ -72,7 +72,7 @@ Edit `.env` (or use Dockge's `.env` editor) and set at least:
 | `APP_ENCRYPTION_KEY` | generated 64-hex value |
 | `PROXY_NETWORK` | network from step 2 |
 | `TZ` | server-side default timezone, e.g. `Europe/Istanbul` |
-| `IMAGE_TAG` | the version you checked out, e.g. `1.0.0-rc.2` |
+| `IMAGE_TAG` | the version you checked out, e.g. `1.0.0-rc.3` |
 
 `NODE_ENV`, `PORT`, `DATABASE_URL` and `COOKIE_SECURE` in `.env.example` are for local development only; Compose sets the production values itself.
 
@@ -88,6 +88,15 @@ Optional integrations, all disabled when empty:
 | Microsoft Entra sign-in | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID` (tenant GUID) | Redirect URI `APP_URL/api/auth/microsoft/callback` |
 
 Passkeys need no configuration, but they only work on the exact `APP_URL` hostname over HTTPS.
+
+AI providers are configured by each user in the app (**AI assistant → Connect provider**); keys are encrypted with `APP_ENCRYPTION_KEY`. Operator settings:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AI_ALLOWED_PRIVATE_HOSTS` | empty | Comma-separated hostnames/IPs of self-hosted model gateways on a private network (e.g. `vllm.lan,10.0.0.12`). Custom endpoints are otherwise limited to public HTTPS hosts. |
+| `AI_TRIAGE_TIMEOUT_MS` | `8000` | How long a decision model may take to classify a new task before the default priority is used. |
+
+Administrators can disable any provider, including `openai_compatible` / `anthropic_compatible` custom endpoints, in **System control → AI provider policies**.
 
 ## 5. Deploy
 
@@ -199,7 +208,10 @@ sudo git fetch --tags && sudo git checkout vX.Y.Z
 # set IMAGE_TAG=X.Y.Z in .env, then:
 docker compose up -d --build
 docker compose logs personal-tracker-migrate
+docker compose ps -a     # web and worker must report (healthy)
 ```
+
+From 1.0.0-rc.2 to 1.0.0-rc.3: migration `0010` is applied automatically (additive; adds indexes and AI tables). The worker now has a healthcheck; it shows `(healthy)` about a minute after start.
 
 Dockge's **Update** button also works: images use `pull_policy: build`, so they are rebuilt from the checked-out source instead of being pulled.
 

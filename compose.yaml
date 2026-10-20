@@ -25,7 +25,7 @@ x-common: &common
   build:
     context: .
     dockerfile: Dockerfile
-  image: personal-tracker:${IMAGE_TAG:-1.0.0-rc.2}
+  image: personal-tracker:${IMAGE_TAG:-1.0.0-rc.3}
   # Images are built from this checkout; Dockge "Update" rebuilds instead of pulling from a registry.
   pull_policy: build
   restart: unless-stopped
@@ -83,7 +83,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.migrate
-    image: personal-tracker-migrate:${IMAGE_TAG:-1.0.0-rc.2}
+    image: personal-tracker-migrate:${IMAGE_TAG:-1.0.0-rc.3}
     pull_policy: build
     restart: "no"
     read_only: true

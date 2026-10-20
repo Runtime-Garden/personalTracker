@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.0-rc.3 — 2026-10-20
+
+### Added
+- OpenAI-compatible and Anthropic-compatible custom endpoints (OpenRouter, vLLM, LiteLLM, gateways) with optional display name; connection list with test and delete in the UI. SSRF protection: HTTPS only, private/reserved addresses blocked at DNS resolution and connect time, redirects refused; `AI_ALLOWED_PRIVATE_HOSTS` for self-hosted gateways. Admin provider policies apply to custom endpoints.
+- Decision model: per-user opt-in automatic classification of priority and importance for new tasks left on *Automatic*; strict JSON validation, 8 s timeout (`AI_TRIAGE_TIMEOUT_MS`), budget-aware, falls back to medium priority. Result and reason shown on the task.
+- Streaming for Anthropic-format connections; usage recorded for tests, streams and triage.
+- Migration `0010`: per-occurrence notifications, reminder series anchor, hot-path indexes, AI triage tables.
+- Worker heartbeat healthcheck, graceful shutdown (`init`, `stop_grace_period`), hourly cleanup of expired auth records.
+
+### Fixed
+- Editing a task, todo or sprint no longer clears its dates; dates no longer display a day early.
+- Snoozed or rescheduled reminders notify again; recurring series keep their original time after a snooze; missed occurrences are skipped instead of replayed; reminders of removed members are silenced.
+- Quiet hours no longer use up email retries; disabling email stops queued sends.
+- OAuth invitations are honoured only for the invited address, also in open signup mode.
+- Forms no longer lose typed input while open; errors are shown inside the dialog with a "load latest version" option on edit conflicts.
+- My Day uses the user's timezone; viewers no longer see actions the API rejects; attachments can be deleted only by the uploader or an admin; sign-out no longer shows an error.
+- AI answers and costs stay on screen; proposal approval follows normal task rules (recurrence, events, timezone) and is hidden after expiry.
+- Passwords are never requested through `window.prompt`; one-time tokens and recovery codes are shown in a dialog with copy.
+- Accessibility: dialogs trap focus, close with Escape and restore focus; current page announced; mobile drawer hidden from keyboard when closed; contextual button names; AA text contrast and visible focus ring using brand tokens.
+- Layout: long names, emails, secrets and kanban titles wrap on small screens; sidebar scrolls on short screens; missing favicon added; mobile menu icon independent of fonts.
+- Static serving returns 404 for missing assets; hashed bundles cached immutably.
+- Backups: systemd PrivateTmp and pipe failures no longer corrupt archives; plain backups include uploads and are private.
+- Error responses keep application messages (e.g. provider HTTP status) while hiding unexpected errors.
+
 ## 1.0.0-rc.2 — 2026-10-20
 
 ### Fixed

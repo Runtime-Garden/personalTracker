@@ -202,15 +202,15 @@ app.get('/*',async(req,reply)=>{let path:string;try{path=decodeURIComponent(new 
   }
   let data:Buffer;try{data=await readFile(target);}catch{throw new HttpError(503,'Frontend not built; run npm run build:web');}
   reply.type(mime[extname(target)]||'application/octet-stream');
-  reply.header('cache-control',target.endsWith('index.html')?'no-cache':path.startsWith('/assets/')&&/-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(path)?'public, max-age=31536000, immutable':'public, max-age=3600');
+  reply.header('cache-control',target.endsWith('index.html')?'no-cache':/^\/assets\/[^/]+-[A-Za-z0-9_-]{8}\.(?:js|css|woff2?)$/.test(path)?'public, max-age=31536000, immutable':'public, max-age=3600');
   return reply.send(data);
 });
 export async function start(){
-  await pool.query('SELECT 1');await app.listen({host:'0.0.0.0',port:Number(process.env.PORT||3000)});
-  // Graceful shutdown: stop accepting connections, let in-flight requests finish, then close the pool.
+  // Graceful shutdown (registered before startup): stop accepting connections, finish in-flight requests, close the pool.
   let closing=false;const shutdown=(signal:string)=>{if(closing)return;closing=true;app.log.info({signal},'Shutting down');
     const force=setTimeout(()=>process.exit(1),20_000);force.unref();
     app.close().then(()=>pool.end()).then(()=>process.exit(0),()=>process.exit(1));};
   process.on('SIGTERM',()=>shutdown('SIGTERM'));process.on('SIGINT',()=>shutdown('SIGINT'));
+  await pool.query('SELECT 1');await app.listen({host:'0.0.0.0',port:Number(process.env.PORT||3000)});
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){start().catch(e=>{console.error(e);process.exit(1)});}
