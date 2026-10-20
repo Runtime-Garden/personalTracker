@@ -1,5 +1,26 @@
 # Runtime Garden /opt/stacks/personal-tracker
 # Only the web container joins existing external `proxy`; PostgreSQL remains private.
+x-env: &env
+  NODE_ENV: production
+  APP_URL: ${APP_URL:?Set APP_URL}
+  COOKIE_SECURE: 'true'
+  DATABASE_URL: postgres://tracker:${DB_PASSWORD:?Set DB_PASSWORD}@personal-tracker-db:5432/tracker
+  SETUP_TOKEN: ${SETUP_TOKEN:?Set SETUP_TOKEN}
+  APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set APP_ENCRYPTION_KEY}
+  GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+  GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+  GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+  GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+  MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
+  MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
+  MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  MAIL_FROM: ${MAIL_FROM:-}
+  SESSION_DAYS: ${SESSION_DAYS:-7}
+  TRUST_PROXY: ${TRUST_PROXY:-}
+  AI_ALLOWED_PRIVATE_HOSTS: ${AI_ALLOWED_PRIVATE_HOSTS:-}
+  AI_TRIAGE_TIMEOUT_MS: ${AI_TRIAGE_TIMEOUT_MS:-8000}
+  TZ: ${TZ:-Europe/Riga}
 x-common: &common
   build:
     context: .
@@ -8,6 +29,9 @@ x-common: &common
   # Images are built from this checkout; Dockge "Update" rebuilds instead of pulling from a registry.
   pull_policy: build
   restart: unless-stopped
+  # tini as PID 1 forwards SIGTERM so the app can drain requests; give it time before SIGKILL.
+  init: true
+  stop_grace_period: 30s
   user: node
   read_only: true
   security_opt:
@@ -16,25 +40,7 @@ x-common: &common
   pids_limit: 192
   tmpfs:
     - /tmp:rw,noexec,nosuid,size=64m
-  environment:
-    NODE_ENV: production
-    APP_URL: ${APP_URL:?Set APP_URL}
-    COOKIE_SECURE: 'true'
-    DATABASE_URL: postgres://tracker:${DB_PASSWORD:?Set DB_PASSWORD}@personal-tracker-db:5432/tracker
-    SETUP_TOKEN: ${SETUP_TOKEN:?Set SETUP_TOKEN}
-    APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set APP_ENCRYPTION_KEY}
-    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-    GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-    GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
-    GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-    MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
-    MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
-    MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
-    RESEND_API_KEY: ${RESEND_API_KEY:-}
-    MAIL_FROM: ${MAIL_FROM:-}
-    SESSION_DAYS: ${SESSION_DAYS:-7}
-    TRUST_PROXY: ${TRUST_PROXY:-}
-    TZ: ${TZ:-Europe/Riga}
+  environment: *env
   networks:
     - private
 services:
@@ -49,24 +55,7 @@ services:
       - private
       - proxy
     environment:
-      NODE_ENV: production
-      APP_URL: ${APP_URL:?Set APP_URL}
-      COOKIE_SECURE: 'true'
-      DATABASE_URL: postgres://tracker:${DB_PASSWORD:?Set DB_PASSWORD}@personal-tracker-db:5432/tracker
-      SETUP_TOKEN: ${SETUP_TOKEN:?Set SETUP_TOKEN}
-      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set APP_ENCRYPTION_KEY}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
-      MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
-      MICROSOFT_CLIENT_SECRET: ${MICROSOFT_CLIENT_SECRET:-}
-      MICROSOFT_TENANT_ID: ${MICROSOFT_TENANT_ID:-}
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      MAIL_FROM: ${MAIL_FROM:-}
-      SESSION_DAYS: ${SESSION_DAYS:-7}
-      TRUST_PROXY: ${TRUST_PROXY:-}
-      TZ: ${TZ:-Europe/Riga}
+      <<: *env
       ATTACHMENTS_DIR: /app/uploads
     volumes:
       - personal_tracker_uploads:/app/uploads
@@ -74,8 +63,13 @@ services:
   personal-tracker-worker:
     <<: *common
     command: ["node", "dist/api/worker.js"]
+    # The worker writes a heartbeat file each loop (every ~15 s); stale for 2 minutes = unhealthy.
     healthcheck:
-      disable: true
+      test: ["CMD", "node", "-e", "const s=require('fs').statSync('/tmp/worker-heartbeat');process.exit(Date.now()-s.mtimeMs<120000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
     depends_on:
       personal-tracker-db:
         condition: service_healthy
@@ -92,6 +86,12 @@ services:
     image: personal-tracker-migrate:${IMAGE_TAG:-1.0.0-rc.2}
     pull_policy: build
     restart: "no"
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
     environment:
       DATABASE_URL: postgres://tracker:${DB_PASSWORD:?Set DB_PASSWORD}@personal-tracker-db:5432/tracker
     depends_on:

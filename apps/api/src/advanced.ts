@@ -25,7 +25,7 @@ export function registerAdvanced(app:FastifyInstance,auth:(r:FastifyRequest)=>Us
    await task(wid,tid);
    const buf=r.body as Buffer;assert(Buffer.isBuffer(buf)&&buf.length>0&&buf.length<=LIMIT,'Invalid upload size',400);
    const fileType=sniffAttachment(buf);assert(fileType,'Unsupported file type',415);
-   let filename='';try{filename=decodeURIComponent(String(r.headers['x-file-name']||''));}catch{throw new Error('Invalid filename encoding');}
+   let filename='';try{filename=decodeURIComponent(String(r.headers['x-file-name']||''));}catch{throw new HttpError(400,'Invalid filename encoding');}
    filename=named(filename,'filename',200);assert(safeAttachmentName(filename),'Unsafe filename');
    await mkdir(STORAGE,{recursive:true,mode:0o700});
    const aid=id(),key=id(),digest=createHash('sha256').update(buf).digest('hex');
@@ -37,7 +37,7 @@ export function registerAdvanced(app:FastifyInstance,auth:(r:FastifyRequest)=>Us
  app.get('/api/workspaces/:wid/attachments/:id/download',async(r,reply)=>{
    const {wid}=await scoped(r),file=await one<{storage_key:string;original_name:string;media_type:string;sha256:string;byte_size:number}>(`SELECT a.storage_key,a.original_name,a.media_type,a.sha256,a.byte_size FROM task_attachments a JOIN tasks t ON t.id=a.task_id AND t.workspace_id=a.workspace_id WHERE a.id=$1 AND a.workspace_id=$2 AND t.archived=false`,[params(r).id,wid]);
    assert(file,'Attachment not found',404);
-   const buf=await readFile(join(STORAGE,file.storage_key));assert(buf.length===file.byte_size&&createHash('sha256').update(buf).digest('hex')===file.sha256,'Attachment integrity check failed',503);
+   const buf=await readFile(join(STORAGE,file.storage_key)).catch(()=>{throw new HttpError(503,'Attachment file is unavailable');});assert(buf.length===file.byte_size&&createHash('sha256').update(buf).digest('hex')===file.sha256,'Attachment integrity check failed',503);
    reply.header('Content-Type','application/octet-stream').header('Cache-Control','private, no-store').header('X-Content-Type-Options','nosniff').header('Content-Disposition',`attachment; filename="attachment"; filename*=UTF-8''${encodeURIComponent(file.original_name)}`);
    return reply.send(buf);
  });
@@ -48,7 +48,7 @@ export function registerAdvanced(app:FastifyInstance,auth:(r:FastifyRequest)=>Us
  rows('SELECT snapshot_date,total_tasks,remaining_tasks,completed_tasks,remaining_minutes FROM sprint_snapshots WHERE sprint_id=$1 ORDER BY snapshot_date',[sid]),
  rows(`SELECT s.id,s.name,s.end_date,count(st.task_id) FILTER(WHERE t.status='done')::int completed FROM sprints s JOIN projects p ON p.id=s.project_id LEFT JOIN sprint_tasks st ON st.sprint_id=s.id LEFT JOIN tasks t ON t.id=st.task_id WHERE p.workspace_id=$1 AND s.state='closed' GROUP BY s.id ORDER BY s.end_date DESC LIMIT 12`,[wid])
  ]);return {sprint,totals,snapshots,velocity,history_note:'Snapshots start when the worker first observes each sprint; no pre-existing daily history is invented.'};});
- app.post('/api/workspaces/:wid/reminders/:id/snooze',async r=>{const {wid,u}=await scoped(r,'member'),until=checkInstant(body(r).until);assert(new Date(until).getTime()>Date.now()&&new Date(until).getTime()<Date.now()+31*864e5,'Snooze must be within 31 days');const result=await pool.query(`UPDATE reminders SET remind_at=$1,snoozed_until=$1,state='pending' WHERE id=$2 AND workspace_id=$3 AND owner_id=$4 AND state IN ('pending','delivered') RETURNING id`,[until,params(r).id,wid,u.id]);assert(result.rowCount===1,'Reminder cannot be snoozed',409);await audit(u.id,wid,'reminder.snoozed',params(r).id);return {ok:true};});
+ app.post('/api/workspaces/:wid/reminders/:id/snooze',async r=>{const {wid,u}=await scoped(r,'member'),until=checkInstant(body(r).until);assert(new Date(until).getTime()>Date.now()&&new Date(until).getTime()<Date.now()+31*864e5,'Snooze must be within 31 days');const result=await pool.query(`UPDATE reminders SET occurrence_at=COALESCE(occurrence_at,remind_at),remind_at=$1,snoozed_until=$1,state='pending' WHERE id=$2 AND workspace_id=$3 AND owner_id=$4 AND state IN ('pending','delivered') RETURNING id`,[until,params(r).id,wid,u.id]);assert(result.rowCount===1,'Reminder cannot be snoozed',409);await audit(u.id,wid,'reminder.snoozed',params(r).id);return {ok:true};});
  app.get('/api/account/export',async r=>{const u=auth(r);const ws=await rows<{id:string}>('SELECT id FROM workspaces WHERE kind=$1 AND owner_id=$2',['personal',u.id]);const ids=ws.map(x=>x.id);const [tasks,todos,reminders,projects]=await Promise.all([
  rows('SELECT id,title,description,status,priority,due_date,created_at FROM tasks WHERE workspace_id=ANY($1::uuid[])',[ids]),
  rows('SELECT id,title,done,due_date,created_at FROM todos WHERE workspace_id=ANY($1::uuid[])',[ids]),

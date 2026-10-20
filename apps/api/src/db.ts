@@ -3,6 +3,8 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from './schema.js';
 import { randomUUID } from 'node:crypto';
 if (!process.env.DATABASE_URL) throw Error('DATABASE_URL must be set');
+// DATE columns are calendar days, not instants: keep them as 'YYYY-MM-DD' instead of a server-timezone Date.
+pg.types.setTypeParser(1082, (v:string)=>v);
 export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.DB_POOL_MAX||10), connectionTimeoutMillis:5000, idleTimeoutMillis:20000 });
 export const orm = drizzle(pool, {schema});
 export const id = () => randomUUID();

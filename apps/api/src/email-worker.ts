@@ -8,7 +8,7 @@ async function claim():Promise<EmailJob|null>{return tx(async c=>{
  LEFT JOIN notification_preferences p ON p.user_id=u.id
  WHERE q.attempts<5 AND q.next_attempt_at<=now() AND
  ((q.state IN ('pending','failed')) OR (q.state='sending' AND q.leased_at<now()-interval '10 minutes'))
- AND u.disabled=false AND u.email_verified_at IS NOT NULL
+ AND u.disabled=false AND u.email_verified_at IS NOT NULL AND COALESCE(p.email,false)=true
  ORDER BY q.next_attempt_at FOR UPDATE OF q SKIP LOCKED LIMIT 1`,[],c);
  if(!item)return null;
  await c.query(`UPDATE notification_email_outbox SET state='sending',attempts=attempts+1,leased_at=now() WHERE notification_id=$1`,[item.notification_id]);return item;
@@ -19,7 +19,7 @@ export async function deliverEmailBatch(limit=10):Promise<{delivered:number;dela
  for(let i=0;i<Math.min(limit,20);i++){
   const item=await claim();if(!item)break;
   if(withinQuietHours(new Date(),item.timezone,item.quiet_start,item.quiet_end)){
-   await pool.query("UPDATE notification_email_outbox SET state='pending',next_attempt_at=now()+interval '30 minutes',leased_at=NULL WHERE notification_id=$1",[item.notification_id]);result.delayed++;continue;
+   await pool.query("UPDATE notification_email_outbox SET state='pending',attempts=GREATEST(attempts-1,0),next_attempt_at=now()+interval '30 minutes',leased_at=NULL WHERE notification_id=$1",[item.notification_id]);result.delayed++;continue;
   }
   try{
    const response=await fetch('https://api.resend.com/emails',{method:'POST',headers:{authorization:`Bearer ${process.env.RESEND_API_KEY}`,'content-type':'application/json'},body:JSON.stringify({from:process.env.MAIL_FROM,to:[item.email],subject:'Personal Tracker notification',text:`${item.message}\n\nOpen your Personal Tracker to review the details.\n${process.env.APP_URL||''}`}),signal:AbortSignal.timeout(10000),redirect:'error'});

@@ -16,6 +16,7 @@ import {registerAdvanced} from './advanced.js';
 import {registerMicrosoft} from './microsoft.js';
 import {registerPasskeys} from './passkeys.js';
 import {registerAIStreaming} from './ai-stream.js';
+import {registerTriage} from './ai-triage.js';
 import {registerIdentitySettings,finalizeLink} from './oauth-link.js';
 
 declare module 'fastify' { interface FastifyRequest {actor:User|null} }
@@ -78,7 +79,9 @@ app.setErrorHandler((error,req,reply)=>{
   const mapped=!(e instanceof HttpError)&&e.code?pg[e.code]:undefined;
   const code=e instanceof HttpError?e.statusCode:mapped?mapped[0]:(e.statusCode&&e.statusCode>=400&&e.statusCode<500?e.statusCode:500);
   if(code>=500)req.log.error({err:e},'API failure');
-  reply.code(code).send({error:code>=500?'Internal server error':mapped?mapped[1]:e.message});
+    // Application-authored HttpError messages (e.g. "AI provider returned HTTP 401") are safe to show; unexpected errors are not.
+  const exposed=e instanceof HttpError?code!==500:code<500;
+  reply.code(code).send({error:exposed?(mapped?mapped[1]:e.message):'Internal server error'});
 });
 app.get('/healthz',async()=>({status:'ok'}));
 app.get('/readyz',async()=>{await pool.query('SELECT 1');return {status:'ready'};});
@@ -142,8 +145,10 @@ app.get('/api/auth/google/callback',async(req,reply)=>{
   const uid=await tx(async c=>{const known=await one<{user_id:string}>('SELECT user_id FROM identities WHERE provider=$1 AND subject=$2',['google',claims.sub],c);if(known)return known.user_id;
     const conflict=await one('SELECT id FROM users WHERE lower(email)=$1',[claims.email.toLowerCase()],c);assert(!conflict,'Account with this email already exists; use its existing login',409);
     const mode=await one<{value:string}>("SELECT value FROM app_settings WHERE name='signup_mode'",[],c);
-    const invite=state.invite_token_hash?await one<{token_hash:string;workspace_id:string|null;role:string;email:string}>(`SELECT * FROM invites WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() FOR UPDATE`,[state.invite_token_hash],c):null;
-    assert(mode?.value==='open'||(invite&&invite.email.toLowerCase()===claims.email.toLowerCase()),'Google signup requires a valid invitation',403);
+    const found=state.invite_token_hash?await one<{token_hash:string;workspace_id:string|null;role:string;email:string}>(`SELECT * FROM invites WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() FOR UPDATE`,[state.invite_token_hash],c):null;
+    // An invitation is honoured only for the address it was issued to, even when signup is open.
+    const invite=found&&found.email.toLowerCase()===claims.email.toLowerCase()?found:null;
+    assert(mode?.value==='open'||invite,'Google signup requires a valid invitation',403);
     const result=await createUser(claims.email,claims.name||claims.email,null,'user',c);
     await c.query('UPDATE users SET email_verified_at=now() WHERE id=$1',[result]);
     if(invite){if(invite.workspace_id)await c.query('INSERT INTO members(workspace_id,user_id,role) VALUES($1,$2,$3)',[invite.workspace_id,result,invite.role]);await c.query('UPDATE invites SET used_at=now() WHERE token_hash=$1',[invite.token_hash]);}
@@ -154,6 +159,7 @@ registerGitHub(app,origin,cookie);
 registerMicrosoft(app,origin,cookie);
 registerPasskeys(app,requireUser,cookie);
 registerAIStreaming(app,requireUser);
+registerTriage(app,requireUser);
 registerIdentitySettings(app,requireUser);
 app.get('/api/bootstrap',async req=>{const u=requireUser(req);return {user:safeUser(u),csrf:u.csrf,workspaces:await userWorkspaces(u.id)};});
 app.get('/api/workspaces',async req=>userWorkspaces(requireUser(req).id));
@@ -182,14 +188,29 @@ app.patch('/api/admin/users/:id',async req=>{const u=requireAdmin(req),body=b(re
 app.post('/api/admin/invites',async req=>{const u=requireAdmin(req),email=named(b(req).email,'email',255).toLowerCase(),raw=token();await pool.query(`INSERT INTO invites(token_hash,email,role,created_by,expires_at) VALUES($1,$2,'member',$3,now()+interval '7 days')`,[hash(raw),email,u.id]);return {invite_token:raw};});
 // Same-origin frontend: serve generated Vite assets without making a separate app/network.
 const frontend=resolve('dist/web');
-const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon','.woff2':'font/woff2'};
-app.get('/*',async(req,reply)=>{const path=new URL(req.url,origin).pathname;
+const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2','.json':'application/json; charset=utf-8','.webmanifest':'application/manifest+json','.map':'application/json; charset=utf-8','.txt':'text/plain; charset=utf-8'};
+app.get('/*',async(req,reply)=>{let path:string;try{path=decodeURIComponent(new URL(req.url,origin).pathname);}catch{throw new HttpError(400,'Invalid path');}
   if(path.startsWith('/api/'))throw new HttpError(404,'Not found');
   const root=resolve(frontend),candidate=resolve(root,`.${path}`);
   assert(candidate===root||candidate.startsWith(root+sep),'Invalid file path',403);
   let target=candidate;
-  try{const s=await stat(target);if(!s.isFile())target=resolve(root,'index.html');}catch{target=resolve(root,'index.html');}
-  try{const data=await readFile(target);reply.type(mime[extname(target)]||'application/octet-stream');reply.header('cache-control',target.endsWith('index.html')?'no-cache':'public, max-age=3600');return reply.send(data);}catch{throw new HttpError(503,'Frontend not built; run npm run build:web');}
+  try{const s=await stat(target);if(!s.isFile())target=resolve(root,'index.html');}
+  catch{
+    // Only extension-less paths are client-side routes; a missing asset must 404, not return HTML.
+    if(extname(path))throw new HttpError(404,'Not found');
+    target=resolve(root,'index.html');
+  }
+  let data:Buffer;try{data=await readFile(target);}catch{throw new HttpError(503,'Frontend not built; run npm run build:web');}
+  reply.type(mime[extname(target)]||'application/octet-stream');
+  reply.header('cache-control',target.endsWith('index.html')?'no-cache':path.startsWith('/assets/')&&/-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(path)?'public, max-age=31536000, immutable':'public, max-age=3600');
+  return reply.send(data);
 });
-export async function start(){await pool.query('SELECT 1');await app.listen({host:'0.0.0.0',port:Number(process.env.PORT||3000)});}
+export async function start(){
+  await pool.query('SELECT 1');await app.listen({host:'0.0.0.0',port:Number(process.env.PORT||3000)});
+  // Graceful shutdown: stop accepting connections, let in-flight requests finish, then close the pool.
+  let closing=false;const shutdown=(signal:string)=>{if(closing)return;closing=true;app.log.info({signal},'Shutting down');
+    const force=setTimeout(()=>process.exit(1),20_000);force.unref();
+    app.close().then(()=>pool.end()).then(()=>process.exit(0),()=>process.exit(1));};
+  process.on('SIGTERM',()=>shutdown('SIGTERM'));process.on('SIGINT',()=>shutdown('SIGINT'));
+}
 if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){start().catch(e=>{console.error(e);process.exit(1)});}

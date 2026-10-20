@@ -31,7 +31,8 @@ export function registerGitHub(app:FastifyInstance,origin:string,cookie:(s:strin
    ]);
    assert(profileResult.ok&&emailResult.ok,'GitHub identity lookup failed',502);
    const profile=await profileResult.json() as {id?:number;name?:string;login?:string};
-   const emails=await emailResult.json() as Array<{email:string;verified:boolean;primary:boolean}>;
+   const rawEmails=await emailResult.json() as unknown;assert(Array.isArray(rawEmails),'GitHub identity lookup failed',502);
+   const emails=rawEmails.filter((x):x is {email:string;verified:boolean;primary:boolean}=>!!x&&typeof x==='object'&&typeof (x as {email?:unknown}).email==='string');
    assert(Number.isSafeInteger(profile.id)&&profile.id!>0,'Invalid GitHub account',401);
    const selected=emails.find(x=>x.primary&&x.verified)||emails.find(x=>x.verified);
    assert(selected?.email,'Verified GitHub email required',403);const mail=selected.email.trim().toLowerCase();
@@ -40,8 +41,10 @@ export function registerGitHub(app:FastifyInstance,origin:string,cookie:(s:strin
      const existing=await one<{user_id:string}>('SELECT user_id FROM identities WHERE provider=$1 AND subject=$2',['github',String(profile.id)],c);if(existing)return existing.user_id;
      const conflict=await one('SELECT id FROM users WHERE lower(email)=$1',[mail],c);assert(!conflict,'Existing email account: sign in with your original method',409);
      const mode=await one<{value:string}>("SELECT value FROM app_settings WHERE name='signup_mode'",[],c);
-     const invite=state.invite_token_hash?await one<{token_hash:string;workspace_id:string|null;role:string;email:string}>(`SELECT * FROM invites WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() FOR UPDATE`,[state.invite_token_hash],c):null;
-     assert(mode?.value==='open'||(invite&&invite.email.toLowerCase()===mail),'Invitation required',403);
+     const found=state.invite_token_hash?await one<{token_hash:string;workspace_id:string|null;role:string;email:string}>(`SELECT * FROM invites WHERE token_hash=$1 AND used_at IS NULL AND expires_at>now() FOR UPDATE`,[state.invite_token_hash],c):null;
+     // An invitation is honoured only for the address it was issued to, even when signup is open.
+     const invite=found&&found.email.toLowerCase()===mail?found:null;
+     assert(mode?.value==='open'||invite,'Invitation required',403);
      const user=await createUser(mail,String(profile.name||profile.login||'GitHub user').slice(0,160),null,'user',c);
      await c.query('UPDATE users SET email_verified_at=now() WHERE id=$1',[user]);
      if(invite){if(invite.workspace_id)await c.query('INSERT INTO members(workspace_id,user_id,role) VALUES($1,$2,$3)',[invite.workspace_id,user,invite.role]);await c.query('UPDATE invites SET used_at=now() WHERE token_hash=$1',[invite.token_hash]);}
